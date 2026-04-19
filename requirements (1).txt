@@ -1,9 +1,0 @@
-streamlit
-fastapi
-uvicorn
-groq
-requests
-python-dotenv
-deep-translator
-streamlit-js-eval
-python-multipart

@@ -697,7 +697,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-api_url = os.getenv("API_URL", "https://your-railway-url.up.railway.app")
+api_url = os.getenv("API_URL", "web-production-21f83.up.railway.app")
 
 # ── Two-column layout ──────────────────────────────────────────────────────────
 left_col, right_col = st.columns([1, 2], gap="large")

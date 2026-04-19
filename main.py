@@ -349,14 +349,12 @@ def confidence_gauge_html(confidence: float, color: str, label: str,
 
 # ── GPS Location via Browser ───────────────────────────────────────────────────
 # ── GPS via Custom HTML/JS ─────────────────────────────────────────────────────
-# Step 1: Check if coords already sent via query params
 _params = st.query_params
 _qlat   = _params.get("lat")
 _qlon   = _params.get("lon")
 
 if not st.session_state.location_fetched:
     if _qlat and _qlon:
-        # Coords received from browser JS via query params
         try:
             lat = float(_qlat)
             lon = float(_qlon)
@@ -364,7 +362,6 @@ if not st.session_state.location_fetched:
             st.session_state.gps_lat = round(lat, 6)
             st.session_state.gps_lon = round(lon, 6)
 
-            # Reverse geocode with Nominatim
             geo = requests.get(
                 f"https://nominatim.openstreetmap.org/reverse"
                 f"?lat={lat}&lon={lon}&format=json&addressdetails=1",
@@ -394,30 +391,32 @@ if not st.session_state.location_fetched:
             st.session_state.gps_pincode  = pincode
 
             if not st.session_state.lang_user_chosen:
-                st.session_state.selected_lang = get_language_from_state(state)
+                detected_lang = get_language_from_state(state)
+                st.session_state.selected_lang = detected_lang
 
         except Exception:
             pass
+
         st.session_state.location_fetched = True
-        # Clear query params after reading
-        st.query_params.clear()
-        st.rerun()
+
     else:
-        # Step 2: Inject JS to get GPS and send back via query params
+        # Inject JS to get GPS and redirect with coords in URL
         st.components.v1.html("""
         <script>
+        function sendLocation(lat, lon) {
+            var baseUrl = window.parent.location.href.split('?')[0];
+            window.parent.location.replace(baseUrl + '?lat=' + lat + '&lon=' + lon);
+        }
+
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
-                function(position) {
-                    var lat = position.coords.latitude;
-                    var lon = position.coords.longitude;
-                    var url = window.parent.location.href.split('?')[0];
-                    window.parent.location.href = url + '?lat=' + lat + '&lon=' + lon;
+                function(pos) {
+                    sendLocation(pos.coords.latitude, pos.coords.longitude);
                 },
-                function(error) {
-                    console.log('GPS error: ' + error.message);
+                function(err) {
+                    console.warn('GPS denied or failed:', err.message);
                 },
-                { enableHighAccuracy: true, timeout: 10000 }
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
             );
         }
         </script>

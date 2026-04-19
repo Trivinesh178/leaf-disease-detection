@@ -4,7 +4,6 @@ import os
 from dotenv import load_dotenv
 from deep_translator import GoogleTranslator
 
-
 load_dotenv()
 
 st.set_page_config(
@@ -348,42 +347,25 @@ def confidence_gauge_html(confidence: float, color: str, label: str,
     """
 
 # ── GPS Location via Browser ───────────────────────────────────────────────────
-# ── GPS via Custom HTML/JS ─────────────────────────────────────────────────────
-_params = st.query_params
-_qlat   = _params.get("lat")
-_qlon   = _params.get("lon")
-
 if not st.session_state.location_fetched:
-    if _qlat and _qlon:
-        try:
-            lat = float(_qlat)
-            lon = float(_qlon)
+    try:
+        # IP-based location — works on Streamlit Cloud without any permission
+        geo = requests.get(
+            "http://ip-api.com/json/?fields=status,country,regionName,city,district,zip,lat,lon",
+            timeout=5
+        ).json()
 
-            st.session_state.gps_lat = round(lat, 6)
-            st.session_state.gps_lon = round(lon, 6)
+        if geo.get("status") == "success":
+            state    = geo.get("regionName", "").replace(" State", "")
+            city     = geo.get("city", "")
+            district = geo.get("district", "")
+            country  = geo.get("country", "")
+            pincode  = geo.get("zip", "")
+            lat      = geo.get("lat")
+            lon      = geo.get("lon")
 
-            geo = requests.get(
-                f"https://nominatim.openstreetmap.org/reverse"
-                f"?lat={lat}&lon={lon}&format=json&addressdetails=1",
-                headers={"User-Agent": "LeafDiseaseApp/1.0"},
-                timeout=5
-            ).json()
-
-            address  = geo.get("address", {})
-            state    = address.get("state", "").replace(" State", "")
-            city     = (address.get("city")
-                     or address.get("town")
-                     or address.get("village")
-                     or address.get("suburb", ""))
-            district = (
-                address.get("state_district") or
-                address.get("county") or
-                address.get("district") or
-                address.get("municipality") or ""
-            ).replace(" District", "").replace(" Mandal", "").strip()
-            country  = address.get("country", "")
-            pincode  = address.get("postcode", "")
-
+            st.session_state.gps_lat      = lat
+            st.session_state.gps_lon      = lon
             st.session_state.gps_state    = state
             st.session_state.gps_city     = city
             st.session_state.gps_district = district
@@ -391,36 +373,13 @@ if not st.session_state.location_fetched:
             st.session_state.gps_pincode  = pincode
 
             if not st.session_state.lang_user_chosen:
-                detected_lang = get_language_from_state(state)
-                st.session_state.selected_lang = detected_lang
+                st.session_state.selected_lang = get_language_from_state(state)
 
-        except Exception:
-            pass
+    except Exception:
+        pass
 
-        st.session_state.location_fetched = True
-
-    else:
-        # Inject JS to get GPS and redirect with coords in URL
-        st.components.v1.html("""
-        <script>
-        function sendLocation(lat, lon) {
-            var baseUrl = window.parent.location.href.split('?')[0];
-            window.parent.location.replace(baseUrl + '?lat=' + lat + '&lon=' + lon);
-        }
-
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                function(pos) {
-                    sendLocation(pos.coords.latitude, pos.coords.longitude);
-                },
-                function(err) {
-                    console.warn('GPS denied or failed:', err.message);
-                },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-            );
-        }
-        </script>
-        """, height=0)
+    st.session_state.location_fetched = True
+    st.rerun()
 
 # ── Global CSS ─────────────────────────────────────────────────────────────────
 st.markdown("""<style>

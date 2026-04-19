@@ -3,7 +3,7 @@ import requests
 import os
 from dotenv import load_dotenv
 from deep_translator import GoogleTranslator
-from streamlit_js_eval import get_geolocation
+
 
 load_dotenv()
 
@@ -348,18 +348,23 @@ def confidence_gauge_html(confidence: float, color: str, label: str,
     """
 
 # ── GPS Location via Browser ───────────────────────────────────────────────────
-if not st.session_state.location_fetched:
-    loc = get_geolocation()
-    if loc is not None:
-        try:
-            lat = loc["coords"]["latitude"]
-            lon = loc["coords"]["longitude"]
+# ── GPS via Custom HTML/JS ─────────────────────────────────────────────────────
+# Step 1: Check if coords already sent via query params
+_params = st.query_params
+_qlat   = _params.get("lat")
+_qlon   = _params.get("lon")
 
-            # Store exact GPS coordinates (ready for future weather API calls)
+if not st.session_state.location_fetched:
+    if _qlat and _qlon:
+        # Coords received from browser JS via query params
+        try:
+            lat = float(_qlat)
+            lon = float(_qlon)
+
             st.session_state.gps_lat = round(lat, 6)
             st.session_state.gps_lon = round(lon, 6)
 
-            # Reverse geocode with full addressdetails
+            # Reverse geocode with Nominatim
             geo = requests.get(
                 f"https://nominatim.openstreetmap.org/reverse"
                 f"?lat={lat}&lon={lon}&format=json&addressdetails=1",
@@ -368,48 +373,55 @@ if not st.session_state.location_fetched:
             ).json()
 
             address  = geo.get("address", {})
-
-            # State — strip redundant suffix (e.g. "Telangana State" → "Telangana")
             state    = address.get("state", "").replace(" State", "")
-
-            # City — try multiple Nominatim fields in priority order
             city     = (address.get("city")
                      or address.get("town")
                      or address.get("village")
                      or address.get("suburb", ""))
-
-            # District — Nominatim uses "county" for Indian districts
-            # For Telangana/AP: "state_district" = actual district (e.g. "Hyderabad", "Medchal-Malkajgiri")
-            # "county" = mandal level in some states — skip it
-            # Priority: state_district → county → district → municipality
-            # Strip " District" suffix if present (e.g. "Hyderabad District" → "Hyderabad")
             district = (
                 address.get("state_district") or
                 address.get("county") or
                 address.get("district") or
                 address.get("municipality") or ""
             ).replace(" District", "").replace(" Mandal", "").strip()
-
-            # Country and pincode
             country  = address.get("country", "")
             pincode  = address.get("postcode", "")
 
-            # Save all location fields to session state
             st.session_state.gps_state    = state
             st.session_state.gps_city     = city
             st.session_state.gps_district = district
             st.session_state.gps_country  = country
             st.session_state.gps_pincode  = pincode
 
-            # Auto-set UI language based on detected state ONLY on first GPS fetch.
-            # If user already manually picked a language, don't overwrite it.
             if not st.session_state.lang_user_chosen:
                 st.session_state.selected_lang = get_language_from_state(state)
 
         except Exception:
             pass
         st.session_state.location_fetched = True
+        # Clear query params after reading
+        st.query_params.clear()
         st.rerun()
+    else:
+        # Step 2: Inject JS to get GPS and send back via query params
+        st.components.v1.html("""
+        <script>
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    var lat = position.coords.latitude;
+                    var lon = position.coords.longitude;
+                    var url = window.parent.location.href.split('?')[0];
+                    window.parent.location.href = url + '?lat=' + lat + '&lon=' + lon;
+                },
+                function(error) {
+                    console.log('GPS error: ' + error.message);
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+        </script>
+        """, height=0)
 
 # ── Global CSS ─────────────────────────────────────────────────────────────────
 st.markdown("""<style>
